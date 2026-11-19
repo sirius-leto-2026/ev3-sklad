@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Складской робот EV3 — симулятор склада</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo" aria-hidden="true"><svg viewBox="0 0 30 30"><rect x="1" y="1" width="28" height="28" rx="5" fill="#1c6db3"/><path d="M7 22V14h8V8h8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="22" r="3" fill="#f2a51f"/></svg></div>
+    <div><h1>Складской робот EV3</h1><p>Симулятор склада и маршрутов · поле 5×5 · зоны A, B, C по 2 места</p></div>
+  </div>
+  <nav role="tablist" aria-label="Разделы">
+    <button role="tab" class="tab active" data-tab="sklad" aria-selected="true">Склад и заказы</button>
+    <button role="tab" class="tab" data-tab="exp" aria-selected="false">Эксперимент</button>
+    <button role="tab" class="tab" data-tab="how" aria-selected="false">Как это работает</button>
+    <button role="tab" class="tab" data-tab="robot" aria-selected="false">Параметры робота</button>
+  </nav>
+</header>
+
+<main>
+<!-- ============ СКЛАД ============ -->
+<section id="tab-sklad" class="page active">
+  <div class="layout">
+    <div class="card map-card">
+      <div class="map-head">
+        <h2>Карта склада</h2>
+        <div class="legend">
+          <span><i class="sw load"></i>загрузка</span><span><i class="sw zone"></i>зона</span>
+          <span><i class="sw obst"></i>препятствие</span><span><i class="sw grid"></i>путь BFS</span>
+          <span><i class="sw fixed"></i>фиксированный</span>
+        </div>
+      </div>
+      <svg id="map" viewBox="0 0 520 520" role="img" aria-label="Карта поля 5 на 5 клеток"></svg>
+      <p class="hint">Щёлкните по клетке (или выберите её стрелками и нажмите Enter), чтобы поставить или убрать препятствие.</p>
+      <div id="status" class="status" aria-live="polite">Готово к работе.</div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h2>Новый заказ</h2>
+        <p class="small">Номер груза → зона: <b>1, 4, 7 → A</b> · <b>2, 5, 8 → B</b> · <b>3, 6, 9 → C</b></p>
+        <div class="cargo-grid" id="cargoButtons" aria-label="Добавить груз в очередь"></div>
+        <div class="row">
+          <button id="btnRandom" class="secondary">+5 случайных</button>
+          <button id="btnClearQ" class="secondary">Очистить очередь</button>
+        </div>
+        <div class="queue" id="queue" aria-live="polite"></div>
+        <button id="btnRun" class="primary">▶ Выполнить очередь</button>
+      </div>
+
+      <div class="card">
+        <h2>Настройки</h2>
+        <label class="field">Способ движения
+          <select id="mode">
+            <option value="grid">Сетка + поиск пути BFS</option>
+            <option value="fixed">Фиксированные маршруты</option>
+          </select>
+        </label>
+        <label class="field">Схема препятствий
+          <select id="layout">
+            <option value="0">0 — без препятствий</option>
+            <option value="1">1 — перекрыт центр (2,2)</option>
+            <option value="2">2 — (2,0) и (3,3)</option>
+            <option value="3">3 — (2,3) и (3,1)</option>
+          </select>
+        </label>
+        <label class="field">Скорость анимации
+          <input id="speed" type="range" min="1" max="8" value="3">
+        </label>
+        <label class="check"><input id="compare" type="checkbox" checked> Показывать оба маршрута для сравнения</label>
+        <div class="row"><button id="btnUnload" class="secondary">Отгрузить всё</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Заполненность зон</h2>
+        <div id="fill"></div>
+        <div class="stats" id="stats"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Журнал смены</h2>
+    <div class="table-wrap"><table id="log"><thead><tr><th>№</th><th>Груз</th><th>Зона</th><th>Способ</th><th>Клеток</th><th>Команды робота</th><th>Время, с</th><th>Остановка, мм</th><th>Итог</th></tr></thead><tbody></tbody></table></div>
+    <div class="row"><button id="btnCsvLog" class="secondary">Скачать журнал CSV</button></div>
+  </div>
+</section>
+
+<!-- ============ ЭКСПЕРИМЕНТ ============ -->
+<section id="tab-exp" class="page">
+  <div class="card">
+    <h2>Эксперимент «сетка против фиксированных маршрутов»</h2>
+    <p>3 схемы препятствий × 3 зоны × <input id="reps" type="number" min="1" max="20" value="5" aria-label="Повторов"> повторов для каждого способа. Время рассчитывается по паспортным данным моторов EV3; разброс и сбои — <b>синтетическая модель</b> до замеров на настоящем роботе.</p>
+    <label class="check"><input id="knows" type="checkbox"> Фиксированный робот заранее знает, где препятствия (самый выгодный для него случай)</label>
+    <div class="row">
+      <label class="field inline">Зерно случайности <input id="seed" type="number" value="1"></label>
+      <button id="btnExp" class="primary">▶ Запустить эксперимент</button>
+      <button id="btnCsvExp" class="secondary" disabled>Скачать протокол CSV</button>
+    </div>
+  </div>
+  <div class="layout2">
+    <div class="card"><h2>Среднее время доставки, с</h2><canvas id="chart" width="720" height="360" aria-label="Диаграмма времени"></canvas></div>
+    <div class="card"><h2>Итог</h2><div id="verdict" class="verdict">Нажмите «Запустить эксперимент».</div><div id="criteria"></div></div>
+  </div>
+  <div class="card"><h2>Таблица по условиям</h2><div class="table-wrap"><table id="expTable"></table></div></div>
+</section>
+
+<!-- ============ КАК ЭТО РАБОТАЕТ ============ -->
+<section id="tab-how" class="page">
+  <div class="layout">
+    <div class="card map-card">
+      <h2>Волна поиска в ширину (BFS)</h2>
+      <svg id="wave" viewBox="0 0 520 520" role="img" aria-label="Расстояния до цели по клеткам"></svg>
+      <div class="row">
+        <label class="field inline">Цель <select id="waveZone"><option>A</option><option>B</option><option>C</option></select></label>
+        <button id="btnWave" class="primary">▶ Показать волну</button>
+      </div>
+    </div>
+    <div class="card text">
+      <h2>Как робот выбирает путь</h2>
+      <ol>
+        <li><b>Номер груза → зона.</b> Оператор вводит номер на блоке EV3. Таблица: 1, 4, 7 → A; 2, 5, 8 → B; 3, 6, 9 → C.</li>
+        <li><b>Зона занята?</b> В зоне 2 места. Если занято, робот пишет «Zone FULL» и везёт груз в ближайшую свободную зону — ту, до которой путь короче.</li>
+        <li><b>Волна BFS.</b> От цели во все стороны расходится «волна»: соседние клетки получают число 1, их соседи — 2 и так далее. Препятствия волна обходит. Число в клетке — сколько клеток до цели.</li>
+        <li><b>Кратчайший путь.</b> Робот из зоны загрузки каждый раз шагает в соседнюю клетку с числом на 1 меньше. Если вариантов несколько — выбирает тот, где меньше поворотов: поворот дольше и даёт ошибку курса.</li>
+        <li><b>Команды.</b> Путь превращается в команды «вперёд на N клеток / налево / направо». Клетки робот считает по чёрным линиям датчиком цвета, повороты делает по гироскопу.</li>
+        <li><b>Фиксированный робот</b> знает только заранее записанные маршруты. Если маршрут перекрыт, он доезжает до препятствия, возвращается и едет по «запасному кругу» вдоль края поля.</li>
+      </ol>
+      <p class="small">Тот же алгоритм работает в программе робота (robot/sklad.py) — веб-версия проверена на совпадение ответов с ней.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ПАРАМЕТРЫ РОБОТА ============ -->
+<section id="tab-robot" class="page">
+  <div class="card">
+    <h2>Параметры робота и поля</h2>
+    <p class="small"><span class="tag t-pass">ПАСПОРТ</span> — данные LEGO Education; <span class="tag t-choice">ВЫБОР</span> — решение команды; <span class="tag t-meas">ИЗМЕРИТЬ</span> — типовое значение (синтетика), заменить замером при калибровке.</p>
+    <div class="table-wrap"><table id="params"></table></div>
+  </div>
+  <div class="layout2">
+    <div class="card"><h2>Расчёт времени</h2><div id="timing"></div></div>
+    <div class="card"><h2>Хватит ли мотора на вилы</h2><div id="torque"></div></div>
+  </div>
+</section>
+</main>
+
+<footer>Сириус.Лето 2026/27 · партнёр — Центр «Созвездие» (Архангельская область) · симулятор работает без интернета</footer>
+
+<script src="config.js"></script>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
